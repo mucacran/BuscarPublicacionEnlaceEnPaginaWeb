@@ -1,0 +1,31 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <title>Buscador de Enlace Publicado</title>
+</head>
+<body>
+    <h1>Buscar dónde fue publicado un enlace</h1>
+    <form method="post">
+        <p>Sitio web a escanear:</p>
+        <input type="text" name="site_url" value="https://www.cfn.fin.ec" size="60" required>
+        <p>Enlace que deseas rastrear:</p>
+        <input type="text" name="target_link" value="{{ target or '' }}" size="100" required>
+        <br><br>
+        <button type="submit">Buscar</button>
+    </form>
+
+    {% if results is not none %}
+        <h2>Resultado:</h2>
+        {% if results %}
+            <ul>
+            {% for page in results %}
+                <li><a href="{{ page }}" target="_blank">{{ page }}</a></li>
+            {% endfor %}
+            </ul>
+        {% else %}
+            <p>No se encontró el enlace en el sitio.</p>
+        {% endif %}
+    {% endif %}
+</body>
+</html>
