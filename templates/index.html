@@ -2,30 +2,90 @@
 <html lang="es">
 <head>
     <meta charset="UTF-8">
-    <title>Buscador de Enlace Publicado</title>
+    <title>Buscar publicación del enlace</title>
+    <style>
+        progress { width: 100%; height: 20px; }
+        .encontrado { color: green; font-weight: bold; }
+        .no-encontrado { color: red; font-weight: bold; }
+    </style>
 </head>
 <body>
-    <h1>Buscar dónde fue publicado un enlace</h1>
-    <form method="post">
-        <p>Sitio web a escanear:</p>
-        <input type="text" name="site_url" value="https://www.cfn.fin.ec" size="60" required>
-        <p>Enlace que deseas rastrear:</p>
-        <input type="text" name="target_link" value="{{ target or '' }}" size="100" required>
-        <br><br>
-        <button type="submit">Buscar</button>
+    <h1>Rastrear dónde fue publicado un enlace</h1>
+    <form onsubmit="iniciarBusqueda(event)">
+        <label>Sitio a escanear:</label><br>
+        <input type="text" id="site" size="60" placeholder="https://www.ejemplo.com" required><br><br>
+        <label>Enlace a rastrear:</label><br>
+        <input type="text" id="target" required placeholder="https://www.cfn.fin.ec/ruta/al/archivo.pdf"><br><br>
+        <button type="submit">Iniciar escaneo</button>
     </form>
 
-    {% if results is not none %}
-        <h2>Resultado:</h2>
-        {% if results %}
-            <ul>
-            {% for page in results %}
-                <li><a href="{{ page }}" target="_blank">{{ page }}</a></li>
-            {% endfor %}
-            </ul>
-        {% else %}
-            <p>No se encontró el enlace en el sitio.</p>
-        {% endif %}
-    {% endif %}
+    <br>
+    <progress id="barra" value="0" max="100"></progress>
+    <p id="estado"></p>
+    <button id="detenerBtn" style="display:none; background-color: #dc3545; color: white; padding: 10px 20px; border: none; border-radius: 4px; cursor: pointer;" onclick="detenerEscaneo()">Detener Escaneo</button>
+    <div id="resultado"></div>
+
+    <script>
+        let intervalId = null;
+        
+        async function iniciarBusqueda(event) {
+            event.preventDefault();
+            document.getElementById("resultado").innerHTML = "";
+            const site = document.getElementById("site").value;
+            const target = document.getElementById("target").value;
+            
+            // Mostrar botón de detener
+            document.getElementById("detenerBtn").style.display = "inline-block";
+
+            await fetch("/iniciar", {
+                method: "POST",
+                headers: { "Content-Type": "application/x-www-form-urlencoded" },
+                body: `site=${encodeURIComponent(site)}&target=${encodeURIComponent(target)}`
+            });
+
+            const barra = document.getElementById("barra");
+            const estado = document.getElementById("estado");
+
+            intervalId = setInterval(async () => {
+                const r = await fetch("/progreso");
+                const data = await r.json();
+                barra.max = data.total;
+                barra.value = data.actual;
+                estado.innerText = `${data.actual} de ${data.total} páginas escaneadas`;
+
+                // Verificar si el crawler sigue activo
+                const estadoRes = await fetch("/estado");
+                const estadoData = await estadoRes.json();
+                
+                if (!estadoData.crawling_active || data.actual >= data.total) {
+                    clearInterval(intervalId);
+                    document.getElementById("detenerBtn").style.display = "none";
+                    
+                    const res = await fetch("/resultados");
+                    const urls = await res.json();
+                    const div = document.getElementById("resultado");
+                    if (urls.length > 0) {
+                        div.innerHTML = `<p class="encontrado">✅ Enlace encontrado en ${urls.length} página(s):</p><ul>` +
+                            urls.map(u => `<li><a href="${u}" target="_blank">${u}</a></li>`).join('') + `</ul>`;
+                    } else {
+                        div.innerHTML = `<p class="no-encontrado">❌ No se encontró el enlace en el sitio.</p>`;
+                    }
+                }
+            }, 1000);
+        }
+        
+        async function detenerEscaneo() {
+            if (intervalId) {
+                clearInterval(intervalId);
+            }
+            
+            await fetch("/detener", {
+                method: "POST"
+            });
+            
+            document.getElementById("detenerBtn").style.display = "none";
+            document.getElementById("estado").innerText += " (Detenido por el usuario)";
+        }
+    </script>
 </body>
 </html>

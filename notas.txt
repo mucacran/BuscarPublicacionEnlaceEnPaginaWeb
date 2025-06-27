@@ -1,5 +1,12 @@
 https://chatgpt.com/share/685ebdc5-f958-8009-ac26-be54955bddae
 
+Primero saber si existe las dependencias
+python3 --version
+python3 -m pip --version
+
+Si no existe instalarlo con los siguientes lineas de codigo
+Para instalar si no hay las dependencias:
+pip install flask httpx selectolax
 
 cuando este se ejecuta asi
 
