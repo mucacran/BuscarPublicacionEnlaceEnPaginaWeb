@@ -57,7 +57,8 @@
                 const estadoRes = await fetch("/estado");
                 const estadoData = await estadoRes.json();
                 
-                if (!estadoData.crawling_active || data.actual >= data.total) {
+                // Solo terminar cuando el crawler esté inactivo Y hayamos procesado todas las páginas conocidas
+                if (!estadoData.crawling_active) {
                     clearInterval(intervalId);
                     document.getElementById("detenerBtn").style.display = "none";
                     
@@ -70,6 +71,7 @@
                     } else {
                         div.innerHTML = `<p class="no-encontrado">❌ No se encontró el enlace en el sitio.</p>`;
                     }
+                    estado.innerText = `Escaneo completado: ${data.actual} de ${data.total} páginas escaneadas`;
                 }
             }, 1000);
         }

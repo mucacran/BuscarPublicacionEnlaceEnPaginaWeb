@@ -122,6 +122,8 @@ def iniciar():
 
 @app.route("/progreso")
 def progreso_estado():
+    global progreso, crawling_active
+    print(f"Progreso solicitado: {progreso}, crawling_active: {crawling_active}")
     return jsonify(progreso)
 
 @app.route("/resultados")
@@ -136,7 +138,9 @@ def detener():
 
 @app.route("/estado")
 def estado():
+    global crawling_active
+    print(f"Estado solicitado: crawling_active = {crawling_active}")
     return jsonify({"crawling_active": crawling_active})
 
 if __name__ == "__main__":
-    app.run(debug=True, port=5002)
+    app.run(debug=True, port=5003)
