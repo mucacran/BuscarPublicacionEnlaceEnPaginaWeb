@@ -15,7 +15,8 @@
         <label>Sitio a escanear:</label><br>
         <input type="text" id="site" size="60" placeholder="https://www.ejemplo.com" required><br><br>
         <label>Enlace a rastrear:</label><br>
-        <input type="text" id="target" required placeholder="https://www.cfn.fin.ec/ruta/al/archivo.pdf"><br><br>
+        <input type="text" id="target" required placeholder="https://www.cfn.fin.ec/ruta/al/archivo.pdf"><br>
+        <small style="color: #666;">💡 El sistema buscará el enlace exacto, nombre del archivo y enlaces que redirijan al archivo</small><br><br>
         <button type="submit">Iniciar escaneo</button>
     </form>
 
@@ -23,6 +24,13 @@
     <progress id="barra" value="0" max="100"></progress>
     <p id="estado"></p>
     <button id="detenerBtn" style="display:none; background-color: #dc3545; color: white; padding: 10px 20px; border: none; border-radius: 4px; cursor: pointer;" onclick="detenerEscaneo()">Detener Escaneo</button>
+    
+    <!-- Área para mostrar resultados en tiempo real -->
+    <div id="resultados-tiempo-real" style="margin-top: 20px;">
+        <h3 id="contador-resultados" style="display:none;">Enlaces encontrados: <span id="num-encontrados">0</span></h3>
+        <div id="lista-resultados"></div>
+    </div>
+    
     <div id="resultado"></div>
 
     <script>
@@ -31,6 +39,8 @@
         async function iniciarBusqueda(event) {
             event.preventDefault();
             document.getElementById("resultado").innerHTML = "";
+            document.getElementById("lista-resultados").innerHTML = "";
+            document.getElementById("contador-resultados").style.display = "none";
             const site = document.getElementById("site").value;
             const target = document.getElementById("target").value;
             
@@ -53,23 +63,42 @@
                 barra.value = data.actual;
                 estado.innerText = `${data.actual} de ${data.total} páginas escaneadas`;
 
+                // Obtener resultados parciales
+                const resParcialesRes = await fetch("/resultados-parciales");
+                const resParcialesData = await resParcialesRes.json();
+                
+                // Mostrar contador si hay resultados
+                const contadorResultados = document.getElementById("contador-resultados");
+                const numEncontrados = document.getElementById("num-encontrados");
+                const listaResultados = document.getElementById("lista-resultados");
+                
+                if (resParcialesData.total_encontrados > 0) {
+                    contadorResultados.style.display = "block";
+                    numEncontrados.textContent = resParcialesData.total_encontrados;
+                    
+                    // Actualizar la lista de resultados
+                    listaResultados.innerHTML = resParcialesData.resultados.map(url => `
+                        <div class='resultado-item' style='margin: 10px 0; padding: 10px; background-color: #e8f5e8; border-left: 4px solid #28a745; border-radius: 4px;'>
+                            <span style='color: #28a745; font-weight: bold;'>✅ Encontrado en:</span><br>
+                            <a href='${url}' target='_blank' style='word-break: break-all;'>${url}</a>
+                        </div>
+                    `).join('');
+                }
+
                 // Verificar si el crawler sigue activo
                 const estadoRes = await fetch("/estado");
                 const estadoData = await estadoRes.json();
                 
-                // Solo terminar cuando el crawler esté inactivo Y hayamos procesado todas las páginas conocidas
+                // Solo terminar cuando el crawler esté inactivo
                 if (!estadoData.crawling_active) {
                     clearInterval(intervalId);
                     document.getElementById("detenerBtn").style.display = "none";
                     
-                    const res = await fetch("/resultados");
-                    const urls = await res.json();
                     const div = document.getElementById("resultado");
-                    if (urls.length > 0) {
-                        div.innerHTML = `<p class="encontrado">✅ Enlace encontrado en ${urls.length} página(s):</p><ul>` +
-                            urls.map(u => `<li><a href="${u}" target="_blank">${u}</a></li>`).join('') + `</ul>`;
+                    if (resParcialesData.total_encontrados > 0) {
+                        div.innerHTML = `<p class="encontrado">🎉 Escaneo completado. Se encontró el enlace en ${resParcialesData.total_encontrados} página(s) de un total de ${data.actual} páginas escaneadas.</p>`;
                     } else {
-                        div.innerHTML = `<p class="no-encontrado">❌ No se encontró el enlace en el sitio.</p>`;
+                        div.innerHTML = `<p class="no-encontrado">❌ Escaneo completado. No se encontró el enlace en ninguna de las ${data.actual} páginas escaneadas.</p>`;
                     }
                     estado.innerText = `Escaneo completado: ${data.actual} de ${data.total} páginas escaneadas`;
                 }
