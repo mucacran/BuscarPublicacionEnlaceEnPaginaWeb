@@ -32,7 +32,6 @@ def extract_links(html, base_url):
 async def crawler(start_url, target_url):
     global progreso, resultados, visited, queue
 
-    # Inicialización
     visited.clear()
     queue = deque([start_url])
     resultados.clear()
@@ -47,31 +46,26 @@ async def crawler(start_url, target_url):
                 continue
             visited.add(url)
 
-            # Actualizar progreso en cada ciclo
             progreso["actual"] = len(visited)
-            progreso["total"] = len(visited) + len(queue)
+            progreso["total"]  = len(visited) + len(queue)
 
             html = await fetch(client, url)
-            if not html:
-                continue
+            if html:
+                html_lower = html.lower()
+                # si encontramos el link o su nombre
+                if target_url.lower() in html_lower or target_filename in html_lower:
+                    resultados.append({
+                        "pagina": url,
+                        "metodo": "enlace exacto o nombre",
+                        "enlace": target_url
+                    })
 
-            # Búsqueda simple: enlace exacto o nombre de archivo
-            html_lower = html.lower()
-            if target_url.lower() in html_lower or target_filename in html_lower:
-                resultados.append({
-                    "pagina": url,
-                    "metodo": "enlace exacto o nombre de archivo",
-                    "enlace": target_url
-                })
-
-            # Encolar enlaces del mismo dominio
-            for link in extract_links(html, url):
-                p = urlparse(link)
-                if p.netloc == "" or p.netloc == base_domain:
-                    if link not in visited and link not in queue:
+                for link in extract_links(html, url):
+                    p = urlparse(link)
+                    if (p.netloc == "" or p.netloc == base_domain) \
+                       and link not in visited and link not in queue:
                         queue.append(link)
 
-    # Marca terminado
     progreso["scanning_active"] = False
 
 def start_crawler(site, target):
@@ -93,11 +87,38 @@ def iniciar():
 
 @app.route("/progreso")
 def get_progreso():
-    return jsonify(progreso)
+    return jsonify({
+        "actual": progreso["actual"],
+        "total": progreso["total"],
+        "crawling_active": progreso["scanning_active"]
+    })
+
 
 @app.route("/resultados")
 def get_resultados():
-    return jsonify(resultados)
+    # devuelve sólo la lista de páginas encontradas
+    return jsonify([r["pagina"] for r in resultados])
+
+# === Aquí los dos endpoints que pedías ===
+
+@app.route("/resultados-parciales")
+def resultados_parciales():
+    return jsonify({
+        "hits": resultados,               # lista de dicts con detalle
+        "count": len(resultados),         # cuántos va encontrando
+        "actual": progreso["actual"],     # páginas procesadas
+        "total": progreso["total"],       # páginas totales en cola+procesadas
+        "scanning": progreso["scanning_active"]
+    })
+
+@app.route("/detener", methods=["POST"])
+def detener():
+    # detiene el loop del crawler
+    progreso["scanning_active"] = False
+    queue.clear()
+    return jsonify({"status": "detenido", 
+                    "processed": progreso["actual"], 
+                    "remaining": len(queue)})
 
 if __name__ == "__main__":
     app.run(debug=True, port=5007)
