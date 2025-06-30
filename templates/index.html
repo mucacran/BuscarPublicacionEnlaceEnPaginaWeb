@@ -2,42 +2,33 @@
 <html lang="es">
 <head>
   <meta charset="UTF-8">
-  <title>Rastrear publicación de enlace</title>
+  <title>Rastrear dónde fue publicado un enlace</title>
   <style>
-    body { font-family: sans-serif; padding: 1rem; max-width: 1200px; margin: 0 auto; }
-    label, input { display: block; margin: .5rem 0; }
-    input[type="text"] { width: 100%; max-width: 600px; padding: 8px; border: 1px solid #ddd; border-radius: 4px; }
-    button { padding: 10px 20px; background: #007cba; color: white; border: none; cursor: pointer; border-radius: 4px; }
-    button:hover { background: #005a87; }
-    progress { width: 100%; height: 20px; display: none; margin-top: 1rem; }
-    #estado { margin-top: .5rem; font-weight: bold; color: #333; }
-    #resultado { margin-top: 2rem; }
-    .encontrado { color: green; font-weight: bold; }
-    .no-encontrado { color: red; font-weight: bold; }
-    ul { list-style: none; padding: 0; }
-    a:hover { text-decoration: underline !important; }
+    body { font-family: sans-serif; padding: 1rem; max-width: 800px; margin: auto;}
+    label, input, button { display: block; margin: .5rem 0; }
+    progress { width:100%; height:20px; display:none; margin-top:1rem; }
   </style>
 </head>
 <body>
+
   <h1>Rastrear dónde fue publicado un enlace</h1>
 
-  <form id="formulario">
+  <form id="formulario" method="post" action="/iniciar">
     <label for="site">Sitio a escanear:</label>
-    <input size="80" type="text" id="site" name="site" value="https://www.cfn.fin.ec" required>
-
+    <input type="text" id="site" name="site" value="https://www.cfn.fin.ec" required>
     <label for="target">Enlace a rastrear:</label>
-    <input size="80" type="text" id="target" name="target"
-      placeholder="https://www.cfn.fin.ec/wp-content/uploads/2014/07/…"
-      required>
-
+    <input type="text" id="target" name="target"
+           placeholder="https://www.cfn.fin.ec/.../archivo.pdf"
+           required>
     <button type="submit">Iniciar escaneo</button>
   </form>
 
-  <progress id="barra" max="1" value="0"></progress>
+  <progress id="barra" value="0" max="1"></progress>
   <div id="estado"></div>
   <div id="resultado"></div>
 
-  <script>
+
+<script>
     const form = document.getElementById("formulario");
     const barra = document.getElementById("barra");
     const estado = document.getElementById("estado");
@@ -45,38 +36,40 @@
 
     form.addEventListener("submit", async e => {
       e.preventDefault();
-      // reiniciar UI
       barra.style.display = "block";
-      barra.value = 0;
+      barra.value = 0; 
       barra.max = 1;
       estado.textContent = "";
       resultado.innerHTML = "";
 
-      // arrancar el crawler
+      // Disparo el crawler
       const fd = new FormData(form);
-      await fetch("/iniciar", { method: "POST", body: fd });
+      await fetch("/iniciar", { method:"POST", body: fd });
 
-      // iniciar loop de progreso y resultados en tiempo real
-      const loop = setInterval(async () => {
-        // Obtener progreso
-        const resp = await fetch("/progreso");
-        const js = await resp.json();
-        barra.max = js.total || 1;
-        barra.value = js.actual;
-        estado.textContent = `${js.actual} de ${js.total} páginas escaneadas`;
-
-        // Obtener resultados parciales en tiempo real
+      // Loop de progreso y resultados en tiempo real
+      const ticket = setInterval(async () => {
         try {
+          // Obtener progreso
+          const res = await fetch("/progreso");
+          const js = await res.json();
+          
+          // Actualizar barra solo si tenemos datos válidos
+          if (js.total > 0) {
+            barra.max = js.total;
+            barra.value = js.actual;
+          }
+          estado.textContent = `${js.actual} de ${js.total} páginas escaneadas`;
+
+          // Obtener resultados parciales en tiempo real
           const r2 = await fetch("/resultados-parciales");
           const hits = await r2.json();
           
-          console.log("Resultados recibidos:", hits); // Para debug
+          console.log("Progreso:", js.actual + "/" + js.total, "Activo:", js.crawling_active, "Resultados:", hits.length);
           
           // Mostrar resultados en tiempo real
           if (hits.length > 0) {
-            resultado.innerHTML = `<p class="encontrado">✅ Enlaces encontrados: ${hits.length}</p><ul>` +
+            resultado.innerHTML = `<p style="color: green; font-weight: bold;">✅ Enlaces encontrados: ${hits.length}</p><ul style="list-style: none; padding: 0;">` +
               hits.map(h => {
-                // Manejar diferentes estructuras de datos
                 const pagina = h.url || h.pagina || h.pagina_donde_se_encontro || 'Página desconocida';
                 const metodo = h.type || h.metodo || h.metodo_encontrado || 'Detectado';
                 const enlaceOriginal = h.original_link || h.enlace_original || h.enlace_publicado || h.link || 'No disponible';
@@ -87,13 +80,13 @@
                           <a href="${pagina}" target="_blank" style="color: #007cba; text-decoration: none;">
                             ${pagina}
                           </a><br><br>
-                          <strong>🔍 Método de detección:</strong> ${metodo}<br><br>
+                          <strong>🔍 Método:</strong> ${metodo}<br><br>
                           <strong>🔗 Enlace publicado:</strong><br>
                           <a href="${enlaceOriginal}" target="_blank" style="color: #007cba; text-decoration: none;">
                             ${enlaceOriginal}
-                          </a><br>
+                          </a>
                           ${enlaceFinal !== enlaceOriginal ? 
-                            `<br><strong>➡️ Redirige a:</strong><br>
+                            `<br><br><strong>➡️ Redirige a:</strong><br>
                              <a href="${enlaceFinal}" target="_blank" style="color: #007cba; text-decoration: none;">
                                ${enlaceFinal}
                              </a>` : 
@@ -101,41 +94,34 @@
                         </li>`;
               }).join("") +
               `</ul>`;
-          } else {
-            // Solo mostrar "buscando..." si el crawler sigue activo
-            if (js.crawling_active) {
-              resultado.innerHTML = `<p style="color: #666;">🔍 Buscando... aún no se han encontrado resultados.</p>`;
-            }
+          } else if (js.crawling_active) {
+            resultado.innerHTML = `<p style="color: #666;">🔍 Buscando... aún no se han encontrado resultados.</p>`;
           }
-        } catch (e) {
-          console.error("Error obteniendo resultados parciales:", e);
-        }
 
-        // Si terminó el crawling
-        if (!js.crawling_active) {
-          clearInterval(loop);
-          
-          // Obtener resultados finales
-          try {
+          // Verificar si terminó (usar crawling_active en lugar de scanning_active)
+          if (!js.crawling_active) {
+            clearInterval(ticket);
+            
+            // Obtener resultados finales
             const r3 = await fetch("/resultados");
             const finalHits = await r3.json();
             
             if (finalHits.length === 0) {
-              resultado.innerHTML = `<p class="no-encontrado">❌ Escaneo completado. No se encontró el enlace en ninguna de las ${js.total} páginas escaneadas.</p>`;
+              resultado.innerHTML = `<p style="color: red; font-weight: bold;">❌ Escaneo completado. No se encontró el enlace en ninguna de las ${js.total} páginas escaneadas.</p>`;
             } else {
-              // Actualizar con mensaje final
               resultado.innerHTML = resultado.innerHTML.replace(
                 `✅ Enlaces encontrados: ${finalHits.length}`,
                 `✅ Escaneo completado! Enlaces encontrados: ${finalHits.length} en ${js.total} páginas escaneadas`
               );
             }
-          } catch (e) {
-            console.error("Error obteniendo resultados finales:", e);
-            resultado.innerHTML = `<p class="no-encontrado">❌ Escaneo completado. Error al obtener resultados finales.</p>`;
           }
+        } catch (e) {
+          console.error("Error en el loop:", e);
         }
       }, 1000);
     });
-  </script>
+</script>
+
+
 </body>
 </html>
