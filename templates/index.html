@@ -1,157 +1,86 @@
 <!DOCTYPE html>
 <html lang="es">
 <head>
-    <meta charset="UTF-8">
-    <title>Buscar publicación del enlace</title>
-    <style>
-        progress { width: 100%; height: 20px; }
-        .encontrado { color: green; font-weight: bold; }
-        .no-encontrado { color: red; font-weight: bold; }
-    </style>
+  <meta charset="UTF-8">
+  <title>Rastrear publicación de enlace</title>
+  <style>
+    body { font-family: sans-serif; padding: 1rem; }
+    label, input { display: block; margin: .5rem 0; }
+    progress { width: 100%; height: 20px; display: none; margin-top: 1rem; }
+    #estado { margin-top: .5rem; }
+    #resultado { margin-top: 2rem; }
+    .encontrado { color: green; font-weight: bold; }
+    .no-encontrado { color: red; font-weight: bold; }
+  </style>
 </head>
 <body>
-    <h1>Rastrear dónde fue publicado un enlace</h1>
-    <form onsubmit="iniciarBusqueda(event)">
-        <label>Sitio a escanear:</label><br>
-        <input type="text" id="site" size="60" placeholder="https://www.ejemplo.com" required><br><br>
-        <label>Enlace a rastrear:</label><br>
-        <input type="text" id="target" size="80" required placeholder="https://www.cfn.fin.ec/ruta/al/archivo.pdf"><br>
-        <small style="color: #666;">💡 El sistema buscará el enlace exacto, nombre del archivo y enlaces que redirijan al archivo</small><br><br>
-        <button type="submit">Iniciar escaneo</button>
-    </form>
+  <h1>Rastrear dónde fue publicado un enlace</h1>
 
-    <br>
-    <progress id="barra" value="0" max="100"></progress>
-    <p id="estado"></p>
-    <button id="detenerBtn" style="display:none; background-color: #dc3545; color: white; padding: 10px 20px; border: none; border-radius: 4px; cursor: pointer;" onclick="detenerEscaneo()">Detener Escaneo</button>
-    
-    <!-- Área para mostrar resultados en tiempo real -->
-    <div id="resultados-tiempo-real" style="margin-top: 20px;">
-        <h3 id="contador-resultados" style="display:none;">Enlaces encontrados: <span id="num-encontrados">0</span></h3>
-        <div id="lista-resultados"></div>
-    </div>
-    
-    <div id="resultado"></div>
+  <form id="formulario">
+    <label for="site">Sitio a escanear:</label>
+    <input type="text" id="site" name="site" value="https://www.cfn.fin.ec" required>
 
-    <script>
-        let intervalId = null;
-        
-        async function iniciarBusqueda(event) {
-            event.preventDefault();
-            document.getElementById("resultado").innerHTML = "";
-            document.getElementById("lista-resultados").innerHTML = "";
-            document.getElementById("contador-resultados").style.display = "none";
-            const site = document.getElementById("site").value;
-            const target = document.getElementById("target").value;
-            
-            // Mostrar botón de detener
-            document.getElementById("detenerBtn").style.display = "inline-block";
+    <label for="target">Enlace a rastrear:</label>
+    <input type="text" id="target" name="target"
+      placeholder="https://www.cfn.fin.ec/wp-content/uploads/2014/07/…"
+      required>
 
-            await fetch("/iniciar", {
-                method: "POST",
-                headers: { "Content-Type": "application/x-www-form-urlencoded" },
-                body: `site=${encodeURIComponent(site)}&target=${encodeURIComponent(target)}`
-            });
+    <button type="submit">Iniciar escaneo</button>
+  </form>
 
-            const barra = document.getElementById("barra");
-            const estado = document.getElementById("estado");
+  <progress id="barra" max="1" value="0"></progress>
+  <div id="estado"></div>
+  <div id="resultado"></div>
 
-            intervalId = setInterval(async () => {
-                const r = await fetch("/progreso");
-                const data = await r.json();
-                barra.max = data.total;
-                barra.value = data.actual;
-                estado.innerText = `${data.actual} de ${data.total} páginas escaneadas`;
+  <script>
+    const form = document.getElementById("formulario");
+    const barra = document.getElementById("barra");
+    const estado = document.getElementById("estado");
+    const resultado = document.getElementById("resultado");
 
-                // Obtener resultados parciales
-                const resParcialesRes = await fetch("/resultados-parciales");
-                const resParcialesData = await resParcialesRes.json();
-                
-                // Mostrar contador si hay resultados
-                const contadorResultados = document.getElementById("contador-resultados");
-                const numEncontrados = document.getElementById("num-encontrados");
-                const listaResultados = document.getElementById("lista-resultados");
-                
-                if (resParcialesData.total_encontrados > 0) {
-                    contadorResultados.style.display = "block";
-                    numEncontrados.textContent = resParcialesData.total_encontrados;
-                    
-                    // Actualizar la lista de resultados con información detallada
-                    listaResultados.innerHTML = resParcialesData.resultados.map((resultado, index) => {
-                        // Si es un objeto detallado (nuevo formato)
-                        if (typeof resultado === 'object' && resultado.pagina_donde_se_encontro) {
-                            return `
-                                <div class='resultado-item' style='margin: 15px 0; padding: 15px; background-color: #e8f5e8; border-left: 4px solid #28a745; border-radius: 4px; box-shadow: 0 2px 4px rgba(0,0,0,0.1);'>
-                                    <div style='color: #28a745; font-weight: bold; font-size: 16px; margin-bottom: 10px;'>
-                                        ✅ Resultado #${index + 1} - ${resultado.metodo_encontrado}
-                                    </div>
-                                    <div style='margin-bottom: 8px;'>
-                                        <strong>📄 Página donde se encontró:</strong><br>
-                                        <a href='${resultado.pagina_donde_se_encontro}' target='_blank' style='word-break: break-all; color: #007bff;'>${resultado.pagina_donde_se_encontro}</a>
-                                    </div>
-                                    ${resultado.enlace_publicado !== 'En el contenido de la página' ? `
-                                        <div style='margin-bottom: 8px;'>
-                                            <strong>🔗 Enlace como fue publicado:</strong><br>
-                                            <code style='background: #f8f9fa; padding: 2px 4px; border-radius: 3px; font-size: 12px; word-break: break-all;'>${resultado.enlace_publicado}</code>
-                                        </div>
-                                        <div style='margin-bottom: 8px;'>
-                                            <strong>📍 Enlace final (después de redirección):</strong><br>
-                                            <code style='background: #f8f9fa; padding: 2px 4px; border-radius: 3px; font-size: 12px; word-break: break-all;'>${resultado.enlace_final}</code>
-                                        </div>
-                                    ` : `
-                                        <div style='margin-bottom: 8px;'>
-                                            <strong>📍 Tipo de detección:</strong> Encontrado directamente en el contenido HTML de la página
-                                        </div>
-                                    `}
-                                    <div style='font-size: 12px; color: #666; margin-top: 10px;'>
-                                        Encontrado en la página #${resultado.timestamp} del escaneo
-                                    </div>
-                                </div>
-                            `;
-                        } else {
-                            // Formato anterior (solo URL)
-                            return `
-                                <div class='resultado-item' style='margin: 10px 0; padding: 10px; background-color: #e8f5e8; border-left: 4px solid #28a745; border-radius: 4px;'>
-                                    <span style='color: #28a745; font-weight: bold;'>✅ Encontrado en:</span><br>
-                                    <a href='${resultado}' target='_blank' style='word-break: break-all;'>${resultado}</a>
-                                </div>
-                            `;
-                        }
-                    }).join('');
-                }
+    form.addEventListener("submit", async e => {
+      e.preventDefault();
+      // reiniciar UI
+      barra.style.display = "block";
+      barra.value = 0;
+      barra.max = 1;
+      estado.textContent = "";
+      resultado.innerHTML = "";
 
-                // Verificar si el crawler sigue activo
-                const estadoRes = await fetch("/estado");
-                const estadoData = await estadoRes.json();
-                
-                // Solo terminar cuando el crawler esté inactivo
-                if (!estadoData.crawling_active) {
-                    clearInterval(intervalId);
-                    document.getElementById("detenerBtn").style.display = "none";
-                    
-                    const div = document.getElementById("resultado");
-                    if (resParcialesData.total_encontrados > 0) {
-                        div.innerHTML = `<p class="encontrado">🎉 Escaneo completado. Se encontró el enlace en ${resParcialesData.total_encontrados} página(s) de un total de ${data.actual} páginas escaneadas.</p>`;
-                    } else {
-                        div.innerHTML = `<p class="no-encontrado">❌ Escaneo completado. No se encontró el enlace en ninguna de las ${data.actual} páginas escaneadas.</p>`;
-                    }
-                    estado.innerText = `Escaneo completado: ${data.actual} de ${data.total} páginas escaneadas`;
-                }
-            }, 1000);
+      // arrancar el crawler
+      const fd = new FormData(form);
+      await fetch("/iniciar", { method: "POST", body: fd });
+
+      // iniciar loop de progreso
+      const loop = setInterval(async () => {
+        const resp = await fetch("/progreso");
+        const js = await resp.json();
+        barra.max = js.total || 1;
+        barra.value = js.actual;
+        estado.textContent = `${js.actual} de ${js.total} páginas escaneadas`;
+
+        if (!js.crawling_active) {
+          clearInterval(loop);
+          // cuando termine, pedir resultados
+          const r2 = await fetch("/resultados");
+          const hits = await r2.json();
+          if (hits.length) {
+            resultado.innerHTML = `<p class="encontrado">✅ Enlace encontrado en:</p><ul>` +
+              hits.map(h => `<li><a href="${h.pagina_donde_se_encontro}" target="_blank">
+                               ${h.pagina_donde_se_encontro}</a>  
+                              [${h.metodo_encontrado}]  
+                              (<a href="${h.enlace_publicado}" target="_blank">
+                                 ${new URL(h.enlace_publicado).pathname.split('/').pop()}
+                               </a>)
+                             </li>`)
+                   .join("") +
+              `</ul>`;
+          } else {
+            resultado.innerHTML = `<p class="no-encontrado">❌ No se encontró el enlace en el sitio.</p>`;
+          }
         }
-        
-        async function detenerEscaneo() {
-            if (intervalId) {
-                clearInterval(intervalId);
-            }
-            
-            await fetch("/detener", {
-                method: "POST"
-            });
-            
-            document.getElementById("detenerBtn").style.display = "none";
-            document.getElementById("estado").innerText += " (Detenido por el usuario)";
-        }
-    </script>
+      }, 1000);
+    });
+  </script>
 </body>
 </html>
