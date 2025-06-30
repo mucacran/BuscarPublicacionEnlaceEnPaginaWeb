@@ -4,13 +4,18 @@
   <meta charset="UTF-8">
   <title>Rastrear publicación de enlace</title>
   <style>
-    body { font-family: sans-serif; padding: 1rem; }
+    body { font-family: sans-serif; padding: 1rem; max-width: 1200px; margin: 0 auto; }
     label, input { display: block; margin: .5rem 0; }
+    input[type="text"] { width: 100%; max-width: 600px; padding: 8px; border: 1px solid #ddd; border-radius: 4px; }
+    button { padding: 10px 20px; background: #007cba; color: white; border: none; cursor: pointer; border-radius: 4px; }
+    button:hover { background: #005a87; }
     progress { width: 100%; height: 20px; display: none; margin-top: 1rem; }
-    #estado { margin-top: .5rem; }
+    #estado { margin-top: .5rem; font-weight: bold; color: #333; }
     #resultado { margin-top: 2rem; }
     .encontrado { color: green; font-weight: bold; }
     .no-encontrado { color: red; font-weight: bold; }
+    ul { list-style: none; padding: 0; }
+    a:hover { text-decoration: underline !important; }
   </style>
 </head>
 <body>
@@ -51,32 +56,82 @@
       const fd = new FormData(form);
       await fetch("/iniciar", { method: "POST", body: fd });
 
-      // iniciar loop de progreso
+      // iniciar loop de progreso y resultados en tiempo real
       const loop = setInterval(async () => {
+        // Obtener progreso
         const resp = await fetch("/progreso");
         const js = await resp.json();
         barra.max = js.total || 1;
         barra.value = js.actual;
         estado.textContent = `${js.actual} de ${js.total} páginas escaneadas`;
 
-        if (!js.crawling_active) {
-          clearInterval(loop);
-          // cuando termine, pedir resultados
-          const r2 = await fetch("/resultados");
+        // Obtener resultados parciales en tiempo real
+        try {
+          const r2 = await fetch("/resultados-parciales");
           const hits = await r2.json();
-          if (hits.length) {
-            resultado.innerHTML = `<p class="encontrado">✅ Enlace encontrado en:</p><ul>` +
-              hits.map(h => `<li><a href="${h.pagina_donde_se_encontro}" target="_blank">
-                               ${h.pagina_donde_se_encontro}</a>  
-                              [${h.metodo_encontrado}]  
-                              (<a href="${h.enlace_publicado}" target="_blank">
-                                 ${new URL(h.enlace_publicado).pathname.split('/').pop()}
-                               </a>)
-                             </li>`)
-                   .join("") +
+          
+          console.log("Resultados recibidos:", hits); // Para debug
+          
+          // Mostrar resultados en tiempo real
+          if (hits.length > 0) {
+            resultado.innerHTML = `<p class="encontrado">✅ Enlaces encontrados: ${hits.length}</p><ul>` +
+              hits.map(h => {
+                // Manejar diferentes estructuras de datos
+                const pagina = h.url || h.pagina || h.pagina_donde_se_encontro || 'Página desconocida';
+                const metodo = h.type || h.metodo || h.metodo_encontrado || 'Detectado';
+                const enlaceOriginal = h.original_link || h.enlace_original || h.enlace_publicado || h.link || 'No disponible';
+                const enlaceFinal = h.final_url || h.enlace_final || enlaceOriginal;
+                
+                return `<li style="margin-bottom: 15px; padding: 12px; background: #f0f8f0; border-left: 4px solid green; border-radius: 4px;">
+                          <strong>📄 Encontrado en:</strong><br>
+                          <a href="${pagina}" target="_blank" style="color: #007cba; text-decoration: none;">
+                            ${pagina}
+                          </a><br><br>
+                          <strong>🔍 Método de detección:</strong> ${metodo}<br><br>
+                          <strong>🔗 Enlace publicado:</strong><br>
+                          <a href="${enlaceOriginal}" target="_blank" style="color: #007cba; text-decoration: none;">
+                            ${enlaceOriginal}
+                          </a><br>
+                          ${enlaceFinal !== enlaceOriginal ? 
+                            `<br><strong>➡️ Redirige a:</strong><br>
+                             <a href="${enlaceFinal}" target="_blank" style="color: #007cba; text-decoration: none;">
+                               ${enlaceFinal}
+                             </a>` : 
+                            ''}
+                        </li>`;
+              }).join("") +
               `</ul>`;
           } else {
-            resultado.innerHTML = `<p class="no-encontrado">❌ No se encontró el enlace en el sitio.</p>`;
+            // Solo mostrar "buscando..." si el crawler sigue activo
+            if (js.crawling_active) {
+              resultado.innerHTML = `<p style="color: #666;">🔍 Buscando... aún no se han encontrado resultados.</p>`;
+            }
+          }
+        } catch (e) {
+          console.error("Error obteniendo resultados parciales:", e);
+        }
+
+        // Si terminó el crawling
+        if (!js.crawling_active) {
+          clearInterval(loop);
+          
+          // Obtener resultados finales
+          try {
+            const r3 = await fetch("/resultados");
+            const finalHits = await r3.json();
+            
+            if (finalHits.length === 0) {
+              resultado.innerHTML = `<p class="no-encontrado">❌ Escaneo completado. No se encontró el enlace en ninguna de las ${js.total} páginas escaneadas.</p>`;
+            } else {
+              // Actualizar con mensaje final
+              resultado.innerHTML = resultado.innerHTML.replace(
+                `✅ Enlaces encontrados: ${finalHits.length}`,
+                `✅ Escaneo completado! Enlaces encontrados: ${finalHits.length} en ${js.total} páginas escaneadas`
+              );
+            }
+          } catch (e) {
+            console.error("Error obteniendo resultados finales:", e);
+            resultado.innerHTML = `<p class="no-encontrado">❌ Escaneo completado. Error al obtener resultados finales.</p>`;
           }
         }
       }, 1000);
