@@ -15,7 +15,7 @@
         <label>Sitio a escanear:</label><br>
         <input type="text" id="site" size="60" placeholder="https://www.ejemplo.com" required><br><br>
         <label>Enlace a rastrear:</label><br>
-        <input type="text" id="target" required placeholder="https://www.cfn.fin.ec/ruta/al/archivo.pdf"><br>
+        <input type="text" id="target" size="80" required placeholder="https://www.cfn.fin.ec/ruta/al/archivo.pdf"><br>
         <small style="color: #666;">💡 El sistema buscará el enlace exacto, nombre del archivo y enlaces que redirijan al archivo</small><br><br>
         <button type="submit">Iniciar escaneo</button>
     </form>
@@ -76,13 +76,48 @@
                     contadorResultados.style.display = "block";
                     numEncontrados.textContent = resParcialesData.total_encontrados;
                     
-                    // Actualizar la lista de resultados
-                    listaResultados.innerHTML = resParcialesData.resultados.map(url => `
-                        <div class='resultado-item' style='margin: 10px 0; padding: 10px; background-color: #e8f5e8; border-left: 4px solid #28a745; border-radius: 4px;'>
-                            <span style='color: #28a745; font-weight: bold;'>✅ Encontrado en:</span><br>
-                            <a href='${url}' target='_blank' style='word-break: break-all;'>${url}</a>
-                        </div>
-                    `).join('');
+                    // Actualizar la lista de resultados con información detallada
+                    listaResultados.innerHTML = resParcialesData.resultados.map((resultado, index) => {
+                        // Si es un objeto detallado (nuevo formato)
+                        if (typeof resultado === 'object' && resultado.pagina_donde_se_encontro) {
+                            return `
+                                <div class='resultado-item' style='margin: 15px 0; padding: 15px; background-color: #e8f5e8; border-left: 4px solid #28a745; border-radius: 4px; box-shadow: 0 2px 4px rgba(0,0,0,0.1);'>
+                                    <div style='color: #28a745; font-weight: bold; font-size: 16px; margin-bottom: 10px;'>
+                                        ✅ Resultado #${index + 1} - ${resultado.metodo_encontrado}
+                                    </div>
+                                    <div style='margin-bottom: 8px;'>
+                                        <strong>📄 Página donde se encontró:</strong><br>
+                                        <a href='${resultado.pagina_donde_se_encontro}' target='_blank' style='word-break: break-all; color: #007bff;'>${resultado.pagina_donde_se_encontro}</a>
+                                    </div>
+                                    ${resultado.enlace_publicado !== 'En el contenido de la página' ? `
+                                        <div style='margin-bottom: 8px;'>
+                                            <strong>🔗 Enlace como fue publicado:</strong><br>
+                                            <code style='background: #f8f9fa; padding: 2px 4px; border-radius: 3px; font-size: 12px; word-break: break-all;'>${resultado.enlace_publicado}</code>
+                                        </div>
+                                        <div style='margin-bottom: 8px;'>
+                                            <strong>📍 Enlace final (después de redirección):</strong><br>
+                                            <code style='background: #f8f9fa; padding: 2px 4px; border-radius: 3px; font-size: 12px; word-break: break-all;'>${resultado.enlace_final}</code>
+                                        </div>
+                                    ` : `
+                                        <div style='margin-bottom: 8px;'>
+                                            <strong>📍 Tipo de detección:</strong> Encontrado directamente en el contenido HTML de la página
+                                        </div>
+                                    `}
+                                    <div style='font-size: 12px; color: #666; margin-top: 10px;'>
+                                        Encontrado en la página #${resultado.timestamp} del escaneo
+                                    </div>
+                                </div>
+                            `;
+                        } else {
+                            // Formato anterior (solo URL)
+                            return `
+                                <div class='resultado-item' style='margin: 10px 0; padding: 10px; background-color: #e8f5e8; border-left: 4px solid #28a745; border-radius: 4px;'>
+                                    <span style='color: #28a745; font-weight: bold;'>✅ Encontrado en:</span><br>
+                                    <a href='${resultado}' target='_blank' style='word-break: break-all;'>${resultado}</a>
+                                </div>
+                            `;
+                        }
+                    }).join('');
                 }
 
                 // Verificar si el crawler sigue activo
